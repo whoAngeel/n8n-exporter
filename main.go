@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -30,6 +32,7 @@ var (
 )
 
 func main() {
+	clearScreen()
 	fmt.Println()
 	printBanner()
 
@@ -152,6 +155,18 @@ func main() {
 	}
 	fmt.Println(styleDim.Render("📁 Output: " + outputDir))
 	fmt.Println()
+}
+
+// clearScreen clears the terminal on Windows (cls) and Unix (clear).
+func clearScreen() {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "cls")
+	} else {
+		cmd = exec.Command("clear")
+	}
+	cmd.Stdout = os.Stdout
+	_ = cmd.Run()
 }
 
 // printBanner prints the ASCII art with version info alongside.

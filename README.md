@@ -21,22 +21,14 @@ Cada workflow exportado conserva solo los campos que n8n necesita para importar:
 
 `settings` siempre se exporta como `{}` para evitar que configuraciones específicas de la instancia origen (como `binaryDataMode`) interfieran en el destino.
 
-## Instalación
+## Compilar y ejecutar
 
 ```bash
-git clone https://github.com/whoAngeel/n8n-workflow-exported
-cd n8n-workflow-exported
 go build -o n8n-exporter .
-```
 
-Mueve el binario a algún lugar en tu `PATH` para usarlo desde cualquier directorio:
-
-```bash
-# Windows
-move n8n-exporter.exe C:\Users\<tu-usuario>\bin\
-
-# macOS / Linux
-mv n8n-exporter ~/.local/bin/
+# Ejecutar
+./n8n-exporter        # macOS / Linux
+n8n-exporter.exe      # Windows
 ```
 
 ## Uso
