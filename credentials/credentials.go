@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/term"
@@ -22,11 +23,12 @@ const (
 
 // Credentials holds all authentication data for a single session.
 type Credentials struct {
-	BaseURL  string // e.g. "https://n8n.example.com" (no trailing slash)
-	AuthType AuthType
-	Username string // only for AuthTypeBasic
-	Password string // only for AuthTypeBasic
-	Token    string // only for AuthTypeToken
+	BaseURL   string // e.g. "https://n8n.example.com" (no trailing slash)
+	AuthType  AuthType
+	Username  string // only for AuthTypeBasic
+	Password  string // only for AuthTypeBasic
+	Token     string // only for AuthTypeToken
+	OutputDir string // absolute path to the export directory
 }
 
 // readMasked reads a sensitive value from stdin without echoing characters.
@@ -135,6 +137,32 @@ func CollectCredentials() (Credentials, error) {
 	}
 
 	// ── Offer to save credentials ─────────────────────────────────────────────
+	fmt.Print("\nOutput directory for exports\n(leave empty to use current directory): ")
+	rawDir, err := reader.ReadString('\n')
+	if err != nil {
+		return Credentials{}, fmt.Errorf("reading output directory: %w", err)
+	}
+	outputDir := strings.TrimSpace(rawDir)
+	if outputDir == "" {
+		// Default: current working directory
+		cwd, err := os.Getwd()
+		if err != nil {
+			cwd = "."
+		}
+		outputDir = filepath.Join(cwd, "#n8n_workflows_original")
+	} else {
+		// Expand ~ to home directory if present
+		if strings.HasPrefix(outputDir, "~") {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				outputDir = filepath.Join(home, outputDir[1:])
+			}
+		}
+		outputDir = filepath.Clean(outputDir)
+	}
+	creds.OutputDir = outputDir
+	fmt.Printf("  → Export directory: %s\n", outputDir)
+
 	fmt.Print("\nSave credentials for future sessions? (y/N): ")
 	saveChoice, err := reader.ReadString('\n')
 	if err != nil {

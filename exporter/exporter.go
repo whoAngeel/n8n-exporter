@@ -14,9 +14,13 @@ import (
 // that n8n might add in future versions.
 var importableFields = []string{"name", "nodes", "connections", "settings"}
 
-// ResolveOutputDir returns the absolute path to the output directory.
-// Falls back to "." as base if os.Getwd() fails.
-func ResolveOutputDir() string {
+// ResolveOutputDir returns the absolute path to use for exports.
+// If customPath is non-empty, it is used as-is (already absolute from credentials).
+// Otherwise falls back to #n8n_workflows_original in the current working directory.
+func ResolveOutputDir(customPath string) string {
+	if customPath != "" {
+		return customPath
+	}
 	base, err := os.Getwd()
 	if err != nil {
 		base = "."

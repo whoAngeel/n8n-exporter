@@ -25,11 +25,12 @@ const (
 
 // storedCredentials is the JSON structure written to disk (encrypted).
 type storedCredentials struct {
-	BaseURL  string   `json:"baseURL"`
-	AuthType AuthType `json:"authType"`
-	Username string   `json:"username,omitempty"`
-	Password string   `json:"password,omitempty"`
-	Token    string   `json:"token,omitempty"`
+	BaseURL   string   `json:"baseURL"`
+	AuthType  AuthType `json:"authType"`
+	Username  string   `json:"username,omitempty"`
+	Password  string   `json:"password,omitempty"`
+	Token     string   `json:"token,omitempty"`
+	OutputDir string   `json:"outputDir,omitempty"`
 }
 
 // credFilePath returns the platform-appropriate path for the encrypted file.
@@ -66,11 +67,12 @@ func SaveCredentials(creds Credentials, passphrase string) error {
 
 	// Serialize credentials to JSON.
 	stored := storedCredentials{
-		BaseURL:  creds.BaseURL,
-		AuthType: creds.AuthType,
-		Username: creds.Username,
-		Password: creds.Password,
-		Token:    creds.Token,
+		BaseURL:   creds.BaseURL,
+		AuthType:  creds.AuthType,
+		Username:  creds.Username,
+		Password:  creds.Password,
+		Token:     creds.Token,
+		OutputDir: creds.OutputDir,
 	}
 	plaintext, err := json.Marshal(stored)
 	if err != nil {
@@ -160,11 +162,12 @@ func LoadCredentials(passphrase string) (Credentials, error) {
 	}
 
 	return Credentials{
-		BaseURL:  stored.BaseURL,
-		AuthType: stored.AuthType,
-		Username: stored.Username,
-		Password: stored.Password,
-		Token:    stored.Token,
+		BaseURL:   stored.BaseURL,
+		AuthType:  stored.AuthType,
+		Username:  stored.Username,
+		Password:  stored.Password,
+		Token:     stored.Token,
+		OutputDir: stored.OutputDir,
 	}, nil
 }
 

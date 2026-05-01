@@ -98,7 +98,7 @@ func main() {
 	}
 
 	// Step 4: Export and clean selected workflows to disk.
-	outputDir := exporter.ResolveOutputDir()
+	outputDir := exporter.ResolveOutputDir(creds.OutputDir)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		fmt.Fprintln(os.Stderr, styleErr.Render(fmt.Sprintf("✗ Cannot create output directory %q: %v", outputDir, err)))
 		os.Exit(1)
