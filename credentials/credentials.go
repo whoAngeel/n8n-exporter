@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 // AuthType distinguishes between Basic Auth (user+password) and API Token.
@@ -27,6 +29,25 @@ type Credentials struct {
 	Token    string // only for AuthTypeToken
 }
 
+// readMasked reads a sensitive value from stdin without echoing characters.
+// Falls back to plain bufio read if the terminal doesn't support raw mode
+// (e.g. when piping input in tests).
+func readMasked(prompt string) (string, error) {
+	fmt.Print(prompt)
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println() // move to next line after hidden input
+	if err != nil {
+		// Fallback for non-TTY environments (pipes, CI, tests).
+		reader := bufio.NewReader(os.Stdin)
+		line, err2 := reader.ReadString('\n')
+		if err2 != nil {
+			return "", fmt.Errorf("reading input: %w", err2)
+		}
+		return strings.TrimSpace(line), nil
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
 // CollectCredentials returns credentials for the session.
 //
 // If a saved credentials file exists, it prompts only for the passphrase
@@ -37,19 +58,17 @@ func CollectCredentials() (Credentials, error) {
 
 	// ── Fast path: saved credentials exist ───────────────────────────────────
 	if CredentialsFileExists() {
-		fmt.Print("Passphrase: ")
-		passphrase, err := reader.ReadString('\n')
+		passphrase, err := readMasked("Passphrase: ")
 		if err != nil {
 			return Credentials{}, fmt.Errorf("reading passphrase: %w", err)
 		}
-		passphrase = strings.TrimSpace(passphrase)
 		if passphrase == "" {
 			return Credentials{}, fmt.Errorf("passphrase cannot be empty")
 		}
 
 		creds, err := LoadCredentials(passphrase)
 		if err != nil {
-			return Credentials{}, err // "wrong passphrase or corrupted file"
+			return Credentials{}, err
 		}
 		return creds, nil
 	}
@@ -87,12 +106,10 @@ func CollectCredentials() (Credentials, error) {
 			return Credentials{}, fmt.Errorf("username cannot be empty")
 		}
 
-		fmt.Print("Password: ")
-		password, err := reader.ReadString('\n')
+		password, err := readMasked("Password: ")
 		if err != nil {
 			return Credentials{}, fmt.Errorf("reading password: %w", err)
 		}
-		password = strings.TrimSpace(password)
 		if password == "" {
 			return Credentials{}, fmt.Errorf("password cannot be empty")
 		}
@@ -102,12 +119,10 @@ func CollectCredentials() (Credentials, error) {
 		creds.Password = password
 
 	case "2":
-		fmt.Print("API Token: ")
-		token, err := reader.ReadString('\n')
+		token, err := readMasked("API Token: ")
 		if err != nil {
 			return Credentials{}, fmt.Errorf("reading token: %w", err)
 		}
-		token = strings.TrimSpace(token)
 		if token == "" {
 			return Credentials{}, fmt.Errorf("API token cannot be empty")
 		}
@@ -128,12 +143,10 @@ func CollectCredentials() (Credentials, error) {
 	saveChoice = strings.TrimSpace(strings.ToLower(saveChoice))
 
 	if saveChoice == "y" || saveChoice == "yes" {
-		fmt.Print("Choose a passphrase to protect your credentials: ")
-		passphrase, err := reader.ReadString('\n')
+		passphrase, err := readMasked("Choose a passphrase to protect your credentials: ")
 		if err != nil {
 			return Credentials{}, fmt.Errorf("reading passphrase: %w", err)
 		}
-		passphrase = strings.TrimSpace(passphrase)
 		if passphrase == "" {
 			fmt.Println("⚠  Passphrase cannot be empty — credentials not saved.")
 		} else {
