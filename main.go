@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -20,12 +22,11 @@ const version = "0.6.0"
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 var (
-	styleOK     = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))  // green
-	styleErr    = lipgloss.NewStyle().Foreground(lipgloss.Color("196")) // red
-	styleWarn   = lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // orange
-	styleDim    = lipgloss.NewStyle().Faint(true)
-	styleBold   = lipgloss.NewStyle().Bold(true)
-	styleBanner = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39")) // cyan
+	styleOK   = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))  // green
+	styleErr  = lipgloss.NewStyle().Foreground(lipgloss.Color("196")) // red
+	styleWarn = lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // orange
+	styleDim  = lipgloss.NewStyle().Faint(true)
+	styleBold = lipgloss.NewStyle().Bold(true)
 )
 
 func main() {
@@ -68,6 +69,11 @@ func main() {
 		styleOK.Render("✓"),
 		styleBold.Render(fmt.Sprintf("Found %d workflow(s)", len(workflows))),
 	)
+
+	// Sort workflows alphabetically by name (case-insensitive).
+	sort.Slice(workflows, func(i, j int) bool {
+		return strings.ToLower(workflows[i].Name) < strings.ToLower(workflows[j].Name)
+	})
 
 	// Step 3: Interactive TUI selection.
 	model := tui.NewSelectorModel(workflows)
@@ -148,16 +154,22 @@ func main() {
 	fmt.Println()
 }
 
-// printBanner prints a styled banner to stdout.
+// printBanner prints the ASCII art with version info alongside.
 func printBanner() {
-	line := "  n8n Workflow Exporter  v" + version + "  "
-	border := "  " + fmt.Sprintf("%s", lipgloss.NewStyle().
-		Bold(true).
+	ascii := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("39")).
+		Bold(true).
+		Render("▄▄  ▄▄ ▄████▄ ▄▄  ▄▄   ▄▄▄▄▄ ▄▄ ▄▄ ▄▄▄▄   ▄▄▄  ▄▄▄▄  ▄▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄▄\n███▄██ ██▄▄██ ███▄██   ██▄▄  ▀█▄█▀ ██▄█▀ ██▀██ ██▄█▄   ██   ██▄▄  ██▄█▄\n██ ▀██ ▀█▄▄█▀ ██ ▀██   ██▄▄▄ ██ ██ ██    ▀███▀ ██ ██   ██   ██▄▄▄ ██ ██")
+
+	info := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39")).
 		Padding(0, 1).
-		Render("n8n Workflow Exporter  v"+version))
-	_ = line
-	fmt.Println(border)
+		Render(lipgloss.JoinVertical(lipgloss.Left,
+			styleDim.Render("n8n workflow exporter"),
+			styleBold.Render("v"+version),
+		))
+
+	fmt.Println(lipgloss.JoinHorizontal(lipgloss.Center, ascii, "  ", info))
 	fmt.Println()
 }
