@@ -32,8 +32,8 @@ func TestNewSelectorModel_InitialState(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			m := NewSelectorModel(makeWorkflows(tc.n))
 
-			if m.cursor != 0 {
-				t.Errorf("cursor = %d, want 0", m.cursor)
+			if m.list.Index() != 0 {
+				t.Errorf("cursor = %d, want 0", m.list.Index())
 			}
 			if len(m.marked) != 0 {
 				t.Errorf("marked has %d entries, want 0", len(m.marked))

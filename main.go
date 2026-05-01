@@ -19,7 +19,7 @@ import (
 	"github.com/whoAngeel/n8n-workflow-exported/tui"
 )
 
-const version = "0.6.0"
+const version = "0.7.0"
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -53,11 +53,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Step 2: Fetch all workflows from n8n.
-	fmt.Printf("\n%s %s\n", styleDim.Render("🔗 Connecting to"), styleBold.Render(creds.BaseURL))
+	// Step 2: Fetch all workflows from n8n (animated spinner while waiting).
 	client := n8nclient.NewN8NClient(creds)
-
-	workflows, err := client.GetAllWorkflows()
+	workflows, err := tui.FetchWithSpinner(creds.BaseURL, client.GetAllWorkflows)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, styleErr.Render("\n✗ Failed to connect to n8n: "+err.Error()))
 		os.Exit(1)
@@ -107,43 +105,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("\n%s\n\n",
+	fmt.Printf("\n%s\n",
 		styleBold.Render(fmt.Sprintf("📦 Exporting %d workflow(s)...", len(selected))),
 	)
 
-	okCount, fail := 0, 0
-	for _, wf := range selected {
+	exportFn := func(wf n8nclient.Workflow) (string, error) {
 		filename := exporter.SanitizeFilename(wf.Name) + ".json"
 		outPath := filepath.Join(outputDir, filename)
-
 		cleaned := exporter.CleanWorkflow(wf.Raw)
 		data, err := json.MarshalIndent(cleaned, "", "  ")
 		if err != nil {
-			fmt.Printf("  %s %-40s  %s\n",
-				styleErr.Render("✗"),
-				wf.Name,
-				styleDim.Render("marshal error: "+err.Error()),
-			)
-			fail++
-			continue
+			return "", err
 		}
+		return filename, os.WriteFile(outPath, data, 0644)
+	}
 
-		if err := os.WriteFile(outPath, data, 0644); err != nil {
-			fmt.Printf("  %s %-40s  %s\n",
-				styleErr.Render("✗"),
-				wf.Name,
-				styleDim.Render("write error: "+err.Error()),
-			)
+	results, err := tui.RunExport(selected, exportFn)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, styleErr.Render("✗ Export error: "+err.Error()))
+		os.Exit(1)
+	}
+
+	okCount, fail := 0, 0
+	for _, r := range results {
+		if r.Err != nil {
 			fail++
-			continue
+		} else {
+			okCount++
 		}
-
-		fmt.Printf("  %s %-40s  %s\n",
-			styleOK.Render("✓"),
-			wf.Name,
-			styleDim.Render("→ "+filename),
-		)
-		okCount++
 	}
 
 	// Summary

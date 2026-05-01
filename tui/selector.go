@@ -3,8 +3,10 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -14,14 +16,13 @@ import (
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 var (
-	styleTitle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))  // bright cyan
-	styleModeIncl  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("82"))  // bright green
-	styleModeExcl  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")) // orange
+	styleTitle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	styleModeIncl  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("82"))
+	styleModeExcl  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
 	styleHelp      = lipgloss.NewStyle().Faint(true)
-	styleCursor    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39")) // bright cyan
-	styleChecked   = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))            // green checkmark
+	styleCursor    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	styleChecked   = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
 	styleUnchecked = lipgloss.NewStyle().Faint(true)
-	styleFooter    = lipgloss.NewStyle().Faint(true)
 	styleCount     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
 )
 
@@ -35,108 +36,154 @@ const (
 	ModeExclusion                      // export all except marked workflows
 )
 
+// workflowItem wraps a workflow for use in the bubbles/list component.
+// idx is the stable position in the original workflows slice, unaffected by filtering.
+type workflowItem struct {
+	wf  n8nclient.Workflow
+	idx int
+}
+
+func (i workflowItem) FilterValue() string { return i.wf.Name }
+
+// itemDelegate renders each row with cursor indicator and checkbox.
+// marked is a direct map reference shared with SelectorModel, so mutations are
+// reflected in the next Render call without needing to call SetDelegate again.
+type itemDelegate struct {
+	marked map[int]bool
+}
+
+func (d itemDelegate) Height() int                              { return 1 }
+func (d itemDelegate) Spacing() int                             { return 0 }
+func (d itemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+
+func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	wfItem, ok := item.(workflowItem)
+	if !ok {
+		return
+	}
+
+	isCursor := index == m.Index()
+	isMarked := d.marked[wfItem.idx]
+
+	cursor := " "
+	if isCursor {
+		cursor = styleCursor.Render("▶")
+	}
+
+	check := styleUnchecked.Render("[ ]")
+	name := wfItem.wf.Name
+	if isMarked {
+		check = styleChecked.Render("[✓]")
+		name = styleChecked.Render(name)
+	}
+
+	fmt.Fprintf(w, "  %s %s  %s", cursor, check, name)
+}
+
+// ── Model ─────────────────────────────────────────────────────────────────────
+
 // SelectorModel is the Bubble Tea model for the workflow selection TUI.
 type SelectorModel struct {
-	workflows []n8nclient.Workflow
-	cursor    int
+	list      list.Model
 	marked    map[int]bool
 	mode      SelectionMode
 	Cancelled bool
+	workflows []n8nclient.Workflow
 }
 
-// NewSelectorModel returns a SelectorModel with safe initial state.
+// NewSelectorModel returns a SelectorModel ready to run.
 func NewSelectorModel(workflows []n8nclient.Workflow) SelectorModel {
+	marked := make(map[int]bool)
+
+	items := make([]list.Item, len(workflows))
+	for i, wf := range workflows {
+		items[i] = workflowItem{wf: wf, idx: i}
+	}
+
+	// delegate shares the same map so Render always sees up-to-date marks.
+	delegate := itemDelegate{marked: marked}
+
+	l := list.New(items, delegate, 80, 20)
+	l.SetShowTitle(false)
+	l.SetShowStatusBar(false)
+	l.SetShowHelp(false)
+	l.SetFilteringEnabled(true)
+	l.Styles.FilterPrompt = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+	l.Styles.FilterCursor = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+
 	return SelectorModel{
-		workflows: workflows,
-		cursor:    0,
-		marked:    make(map[int]bool),
+		list:      l,
+		marked:    marked,
 		mode:      ModeInclusion,
-		Cancelled: false,
+		workflows: workflows,
 	}
 }
 
-// Init satisfies tea.Model. No initial command needed.
-func (m SelectorModel) Init() tea.Cmd {
-	return nil
-}
+func (m SelectorModel) Init() tea.Cmd { return nil }
 
-// Update handles keyboard input and returns the updated model.
 func (m SelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.list.SetSize(msg.Width-4, msg.Height-8)
+		return m, nil
+
 	case tea.KeyMsg:
+		// While filtering, delegate all keys to the list component.
+		if m.list.FilterState() == list.Filtering {
+			var cmd tea.Cmd
+			m.list, cmd = m.list.Update(msg)
+			return m, cmd
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.Cancelled = true
 			return m, tea.Quit
 
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
+		case " ":
+			if item, ok := m.list.SelectedItem().(workflowItem); ok {
+				m.marked[item.idx] = !m.marked[item.idx]
 			}
+			return m, nil
 
-		case "down", "j":
-			if m.cursor < len(m.workflows)-1 {
-				m.cursor++
-			}
-
-		case " ": // toggle mark
-			m.marked[m.cursor] = !m.marked[m.cursor]
-
-		case "tab": // toggle inclusion/exclusion mode
+		case "tab":
 			if m.mode == ModeInclusion {
 				m.mode = ModeExclusion
 			} else {
 				m.mode = ModeInclusion
 			}
+			return m, nil
 
-		case "enter": // confirm selection
+		case "enter":
 			return m, tea.Quit
 		}
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
 }
 
-// View renders the full TUI screen with lipgloss styles.
 func (m SelectorModel) View() string {
 	var b strings.Builder
 
-	// ── Header ───────────────────────────────────────────────────────────────
 	modeLabel := styleModeIncl.Render("[INCLUSIÓN]")
 	if m.mode == ModeExclusion {
 		modeLabel = styleModeExcl.Render("[EXCLUSIÓN]")
 	}
+
 	b.WriteString(fmt.Sprintf("\n  %s  %s\n",
 		styleTitle.Render("n8n Workflow Exporter"),
 		modeLabel,
 	))
 	b.WriteString("  " + strings.Repeat("─", 55) + "\n")
-	b.WriteString(styleHelp.Render("  ↑/↓ navegar   SPACE marcar   TAB cambiar modo   ENTER exportar   q salir") + "\n\n")
+	b.WriteString(styleHelp.Render("  ↑/↓ navegar   SPACE marcar   TAB modo   / filtrar   ENTER exportar   q salir") + "\n\n")
 
-	// ── Workflow list ─────────────────────────────────────────────────────────
-	for i, wf := range m.workflows {
-		var cursor, check, name string
+	b.WriteString(m.list.View())
 
-		if i == m.cursor {
-			cursor = styleCursor.Render("▶")
-		} else {
-			cursor = " "
-		}
-
-		if m.marked[i] {
-			check = styleChecked.Render("[✓]")
-			name = styleChecked.Render(wf.Name)
-		} else {
-			check = styleUnchecked.Render("[ ]")
-			name = wf.Name
-		}
-
-		b.WriteString(fmt.Sprintf("  %s %s  %s\n", cursor, check, name))
-	}
-
-	// ── Footer ────────────────────────────────────────────────────────────────
 	selected := len(m.GetSelectedWorkflows())
-	b.WriteString(fmt.Sprintf("\n  %s %s / %d\n\n",
-		styleFooter.Render("Workflows a exportar:"),
+	b.WriteString(fmt.Sprintf("\n\n  %s %s / %d\n\n",
+		styleHelp.Render("Workflows a exportar:"),
 		styleCount.Render(fmt.Sprintf("%d", selected)),
 		len(m.workflows),
 	))
@@ -144,8 +191,8 @@ func (m SelectorModel) View() string {
 	return b.String()
 }
 
-// GetSelectedWorkflows returns the workflows to export based on the current mode
-// and marked set. Never returns nil.
+// GetSelectedWorkflows returns the workflows to export based on mode and marked set.
+// Never returns nil.
 func (m SelectorModel) GetSelectedWorkflows() []n8nclient.Workflow {
 	result := make([]n8nclient.Workflow, 0)
 	for i, wf := range m.workflows {
