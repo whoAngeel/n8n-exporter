@@ -78,18 +78,6 @@ $RECYCLE.BIN/
 
 # Compiled binaries (no extension, Linux/Mac)
 n8n-exporter
-#n8n_workflows_original/a.Address.ext.json
-#n8n_workflows_original/a.Address.int.json
-#n8n_workflows_original/a.POA.json
-#n8n_workflows_original/a.shareholder.csf.json
-#n8n_workflows_original/sw.prompt.json
-#n8n_workflows_original/xc.act.json
-#n8n_workflows_original/xc.assambly.json
-#n8n_workflows_original/xc.General.json
-#n8n_workflows_original/xc.Geo.Validation.json
-#n8n_workflows_original/xc.invoice.customer.json
-#n8n_workflows_original/xc.invoice.vendor.json
-#n8n_workflows_original/xc.risk_scoring.json
-#n8n_workflows_original/xc.shareholder.id.json
-#n8n_workflows_original/xc.Tax.CSF.json
-#n8n_workflows_original/
+
+# Exported workflows directory (generated output, not source)
+\#n8n_workflows_original/
