@@ -81,3 +81,5 @@ n8n-exporter
 
 # Exported workflows directory (generated output, not source)
 \#n8n_workflows_original/
+# Local planning docs
+PRD.md
