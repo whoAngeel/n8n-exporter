@@ -19,7 +19,9 @@ import (
 	"github.com/whoAngeel/n8n-workflow-exported/tui"
 )
 
-const version = "0.7.0"
+// version is set at build time via -ldflags by GoReleaser.
+// Falls back to "dev" for local builds without a tag.
+var version = "dev"
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
