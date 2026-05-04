@@ -49,7 +49,7 @@ changelog:
 release:
   github:
     owner: whoAngeel
-    name: n8n-workflow-exported
+    name: n8n-exporter
   draft: false
   prerelease: auto
   name_template: "v{{.Version}}"
