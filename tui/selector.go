@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -24,6 +25,8 @@ var (
 	styleChecked   = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))
 	styleUnchecked = lipgloss.NewStyle().Faint(true)
 	styleCount     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	styleTodayItem = lipgloss.NewStyle().Foreground(lipgloss.Color("220")) // yellow
+	styleSepLine   = lipgloss.NewStyle().Faint(true)
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -37,47 +40,64 @@ const (
 )
 
 // workflowItem wraps a workflow for use in the bubbles/list component.
-// idx is the stable position in the original workflows slice, unaffected by filtering.
+// idx is the stable position in the original workflows slice.
+// isToday indicates the workflow was updated today.
 type workflowItem struct {
-	wf  n8nclient.Workflow
-	idx int
+	wf      n8nclient.Workflow
+	idx     int
+	isToday bool
 }
 
 func (i workflowItem) FilterValue() string { return i.wf.Name }
 
-// itemDelegate renders each row with cursor indicator and checkbox.
-// marked is a direct map reference shared with SelectorModel, so mutations are
-// reflected in the next Render call without needing to call SetDelegate again.
+// separatorItem is a non-selectable divider rendered as a horizontal line.
+type separatorItem struct{}
+
+func (s separatorItem) FilterValue() string { return "" }
+
+// ── Delegates ─────────────────────────────────────────────────────────────────
+
+// itemDelegate renders workflow rows with cursor, checkbox, and today badge.
 type itemDelegate struct {
 	marked map[int]bool
 }
 
-func (d itemDelegate) Height() int                              { return 1 }
-func (d itemDelegate) Spacing() int                             { return 0 }
+func (d itemDelegate) Height() int                             { return 1 }
+func (d itemDelegate) Spacing() int                            { return 0 }
 func (d itemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
 
 func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
-	wfItem, ok := item.(workflowItem)
-	if !ok {
+	switch v := item.(type) {
+	case separatorItem:
+		_ = v
+		fmt.Fprintf(w, "  %s", styleSepLine.Render(strings.Repeat("─", 52)))
 		return
+
+	case workflowItem:
+		isCursor := index == m.Index()
+		isMarked := d.marked[v.idx]
+
+		cursor := " "
+		if isCursor {
+			cursor = styleCursor.Render("▶")
+		}
+
+		badge := "  " // two spaces to align with "★ "
+		if v.isToday {
+			badge = styleTodayItem.Render("★ ")
+		}
+
+		check := styleUnchecked.Render("[ ]")
+		name := v.wf.Name
+		if isMarked {
+			check = styleChecked.Render("[✓]")
+			name = styleChecked.Render(name)
+		} else if v.isToday {
+			name = styleTodayItem.Render(name)
+		}
+
+		fmt.Fprintf(w, "  %s %s %s%s", cursor, check, badge, name)
 	}
-
-	isCursor := index == m.Index()
-	isMarked := d.marked[wfItem.idx]
-
-	cursor := " "
-	if isCursor {
-		cursor = styleCursor.Render("▶")
-	}
-
-	check := styleUnchecked.Render("[ ]")
-	name := wfItem.wf.Name
-	if isMarked {
-		check = styleChecked.Render("[✓]")
-		name = styleChecked.Render(name)
-	}
-
-	fmt.Fprintf(w, "  %s %s  %s", cursor, check, name)
 }
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -88,20 +108,66 @@ type SelectorModel struct {
 	marked    map[int]bool
 	mode      SelectionMode
 	Cancelled bool
-	workflows []n8nclient.Workflow
+	workflows []n8nclient.Workflow // original slice, stable indices
+}
+
+// isUpdatedToday returns true if the ISO 8601 timestamp corresponds to today
+// in the local timezone.
+func isUpdatedToday(updatedAt string) bool {
+	if updatedAt == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, updatedAt)
+	if err != nil {
+		t, err = time.Parse("2006-01-02T15:04:05.000Z", updatedAt)
+		if err != nil {
+			return false
+		}
+	}
+	now := time.Now()
+	y1, m1, d1 := t.Local().Date()
+	y2, m2, d2 := now.Date()
+	return y1 == y2 && m1 == m2 && d1 == d2
+}
+
+// buildItems returns the list items ordered as:
+//  1. Workflows modified today (with isToday=true), sorted as received
+//  2. A separator line (only if there is at least one today item AND at least one other)
+//  3. Remaining workflows
+func buildItems(workflows []n8nclient.Workflow) []list.Item {
+	var todayItems []list.Item
+	var restItems []list.Item
+
+	for i, wf := range workflows {
+		today := isUpdatedToday(wf.UpdatedAt)
+		item := workflowItem{wf: wf, idx: i, isToday: today}
+		if today {
+			todayItems = append(todayItems, item)
+		} else {
+			restItems = append(restItems, item)
+		}
+	}
+
+	if len(todayItems) == 0 {
+		return restItems
+	}
+	if len(restItems) == 0 {
+		return todayItems
+	}
+
+	items := make([]list.Item, 0, len(todayItems)+1+len(restItems))
+	items = append(items, todayItems...)
+	items = append(items, separatorItem{})
+	items = append(items, restItems...)
+	return items
 }
 
 // NewSelectorModel returns a SelectorModel ready to run.
 func NewSelectorModel(workflows []n8nclient.Workflow) SelectorModel {
 	marked := make(map[int]bool)
-
-	items := make([]list.Item, len(workflows))
-	for i, wf := range workflows {
-		items[i] = workflowItem{wf: wf, idx: i}
-	}
-
-	// delegate shares the same map so Render always sees up-to-date marks.
 	delegate := itemDelegate{marked: marked}
+
+	items := buildItems(workflows)
 
 	l := list.New(items, delegate, 80, 20)
 	l.SetShowTitle(false)
@@ -128,7 +194,6 @@ func (m SelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// While filtering, delegate all keys to the list component.
 		if m.list.FilterState() == list.Filtering {
 			var cmd tea.Cmd
 			m.list, cmd = m.list.Update(msg)
@@ -141,6 +206,7 @@ func (m SelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case " ":
+			// Only toggle if the selected item is a workflow (not the separator).
 			if item, ok := m.list.SelectedItem().(workflowItem); ok {
 				m.marked[item.idx] = !m.marked[item.idx]
 			}

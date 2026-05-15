@@ -107,11 +107,11 @@ Passphrase: ••••••••
 
 Las credenciales (URL, token/contraseña, directorio de exportación) se guardan encriptadas en:
 
-| Sistema | Ruta |
-|---|---|
-| Windows | `%AppData%\n8n-exporter\credentials.enc` |
-| macOS | `~/Library/Application Support/n8n-exporter/credentials.enc` |
-| Linux | `~/.config/n8n-exporter/credentials.enc` |
+| Sistema | Ruta                                                         |
+| ---------| --------------------------------------------------------------|
+| Windows | `%AppData%\n8n-exporter\credentials.enc`                     |
+| macOS   | `~/Library/Application Support/n8n-exporter/credentials.enc` |
+| Linux   | `~/.config/n8n-exporter/credentials.enc`                     |
 
 La encriptación usa **AES-256-GCM** con clave derivada de tu passphrase mediante **PBKDF2-SHA256** (100,000 iteraciones). Sin la passphrase el archivo es ilegible.
 

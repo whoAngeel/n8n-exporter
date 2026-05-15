@@ -12,21 +12,10 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-// AuthType distinguishes between Basic Auth (user+password) and API Token.
-type AuthType int
-
-const (
-	AuthTypeBasic AuthType = iota // username + password
-	AuthTypeToken                 // API token (X-N8N-API-KEY)
-)
-
 // Credentials holds all authentication data for a single session.
 type Credentials struct {
 	BaseURL   string // e.g. "https://n8n.example.com" (no trailing slash)
-	AuthType  AuthType
-	Username  string // only for AuthTypeBasic
-	Password  string // only for AuthTypeBasic
-	Token     string // only for AuthTypeToken
+	Token     string // API token (X-N8N-API-KEY)
 	OutputDir string // absolute path to the export directory
 }
 
@@ -69,9 +58,9 @@ func collectFromSaved() (Credentials, error) {
 
 // collectFromScratch prompts for all credential fields on first run.
 func collectFromScratch() (Credentials, error) {
-	// ── Step 1: URL + auth type ───────────────────────────────────────────────
+	// ── Step 1: URL + API Token ───────────────────────────────────────────────
 	var baseURL string
-	var authChoice string
+	var token string
 
 	err := huh.NewForm(
 		huh.NewGroup(
@@ -85,13 +74,17 @@ func collectFromScratch() (Credentials, error) {
 					}
 					return nil
 				}),
-			huh.NewSelect[string]().
-				Title("Authentication Type").
-				Options(
-					huh.NewOption("Basic Auth (username + password)", "basic"),
-					huh.NewOption("API Token (X-N8N-API-KEY)", "token"),
-				).
-				Value(&authChoice),
+			huh.NewInput().
+				Title("API Token").
+				Description("Settings → API → Create an API key in your n8n instance").
+				EchoMode(huh.EchoModePassword).
+				Value(&token).
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return fmt.Errorf("API token cannot be empty")
+					}
+					return nil
+				}),
 		),
 	).Run()
 	if err != nil {
@@ -100,63 +93,7 @@ func collectFromScratch() (Credentials, error) {
 
 	var creds Credentials
 	creds.BaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-
-	// ── Step 2: Auth credentials ──────────────────────────────────────────────
-	switch authChoice {
-	case "basic":
-		var username, password string
-		err = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Username").
-					Value(&username).
-					Validate(func(s string) error {
-						if strings.TrimSpace(s) == "" {
-							return fmt.Errorf("username cannot be empty")
-						}
-						return nil
-					}),
-				huh.NewInput().
-					Title("Password").
-					EchoMode(huh.EchoModePassword).
-					Value(&password).
-					Validate(func(s string) error {
-						if strings.TrimSpace(s) == "" {
-							return fmt.Errorf("password cannot be empty")
-						}
-						return nil
-					}),
-			),
-		).Run()
-		if err != nil {
-			return Credentials{}, fmt.Errorf("auth form: %w", err)
-		}
-		creds.AuthType = AuthTypeBasic
-		creds.Username = strings.TrimSpace(username)
-		creds.Password = password
-
-	case "token":
-		var token string
-		err = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("API Token").
-					EchoMode(huh.EchoModePassword).
-					Value(&token).
-					Validate(func(s string) error {
-						if strings.TrimSpace(s) == "" {
-							return fmt.Errorf("API token cannot be empty")
-						}
-						return nil
-					}),
-			),
-		).Run()
-		if err != nil {
-			return Credentials{}, fmt.Errorf("token form: %w", err)
-		}
-		creds.AuthType = AuthTypeToken
-		creds.Token = token
-	}
+	creds.Token = token
 
 	// ── Step 3: Output directory + save option ────────────────────────────────
 	var outputDirInput string

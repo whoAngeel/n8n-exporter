@@ -2,7 +2,6 @@
 package n8nclient
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,9 +20,10 @@ type WorkflowSummary struct {
 // Workflow holds the full workflow data as returned by the API.
 // Raw contains the complete JSON object without any modification.
 type Workflow struct {
-	ID   string
-	Name string
-	Raw  map[string]any // full JSON as returned by the API, unmodified
+	ID        string
+	Name      string
+	UpdatedAt string         // ISO 8601 timestamp from the API (e.g. "2024-05-15T10:30:00.000Z")
+	Raw       map[string]any // full JSON as returned by the API, unmodified
 }
 
 // N8NClient wraps an http.Client configured for a specific n8n instance.
@@ -52,16 +52,8 @@ func (c *N8NClient) GetAllWorkflows() ([]Workflow, error) {
 		return nil, fmt.Errorf("building request: %w", err)
 	}
 
-	// Apply authentication header based on AuthType.
-	switch c.creds.AuthType {
-	case credentials.AuthTypeBasic:
-		encoded := base64.StdEncoding.EncodeToString(
-			[]byte(c.creds.Username + ":" + c.creds.Password),
-		)
-		req.Header.Set("Authorization", "Basic "+encoded)
-	case credentials.AuthTypeToken:
-		req.Header.Set("X-N8N-API-KEY", c.creds.Token)
-	}
+	// Apply API Token authentication header.
+	req.Header.Set("X-N8N-API-KEY", c.creds.Token)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -95,10 +87,12 @@ func (c *N8NClient) GetAllWorkflows() ([]Workflow, error) {
 	for _, item := range envelope.Data {
 		id, _ := item["id"].(string)
 		name, _ := item["name"].(string)
+		updatedAt, _ := item["updatedAt"].(string)
 		workflows = append(workflows, Workflow{
-			ID:   id,
-			Name: name,
-			Raw:  item, // unmodified reference to the parsed object
+			ID:        id,
+			Name:      name,
+			UpdatedAt: updatedAt,
+			Raw:       item, // unmodified reference to the parsed object
 		})
 	}
 

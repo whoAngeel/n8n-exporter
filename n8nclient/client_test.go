@@ -1,7 +1,6 @@
 package n8nclient
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,56 +13,6 @@ import (
 func emptyWorkflowsResponse() []byte {
 	data, _ := json.Marshal(map[string]any{"data": []any{}})
 	return data
-}
-
-// TestBasicAuthHeader verifies Property 4:
-// For any (username, password) pair, GetAllWorkflows sends exactly
-// "Authorization: Basic base64(username:password)".
-func TestBasicAuthHeader(t *testing.T) {
-	cases := []struct {
-		username string
-		password string
-		desc     string
-	}{
-		{"admin", "secret", "simple credentials"},
-		{"user@example.com", "p@$$w0rd!", "email username and special chars in password"},
-		{"user", "pass:with:colons", "colons in password"},
-		{"üser", "pässwörd", "unicode characters"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.desc, func(t *testing.T) {
-			var capturedHeader string
-
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				capturedHeader = r.Header.Get("Authorization")
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				w.Write(emptyWorkflowsResponse())
-			}))
-			defer srv.Close()
-
-			creds := credentials.Credentials{
-				BaseURL:  srv.URL,
-				AuthType: credentials.AuthTypeBasic,
-				Username: tc.username,
-				Password: tc.password,
-			}
-
-			client := NewN8NClient(creds)
-			_, err := client.GetAllWorkflows()
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			expected := "Basic " + base64.StdEncoding.EncodeToString(
-				[]byte(tc.username+":"+tc.password),
-			)
-			if capturedHeader != expected {
-				t.Errorf("Authorization header = %q, want %q", capturedHeader, expected)
-			}
-		})
-	}
 }
 
 // TestTokenAuthHeader verifies Property 5:
@@ -93,9 +42,8 @@ func TestTokenAuthHeader(t *testing.T) {
 			defer srv.Close()
 
 			creds := credentials.Credentials{
-				BaseURL:  srv.URL,
-				AuthType: credentials.AuthTypeToken,
-				Token:    tc.token,
+				BaseURL: srv.URL,
+				Token:   tc.token,
 			}
 
 			client := NewN8NClient(creds)
@@ -121,9 +69,8 @@ func TestGetAllWorkflows_AuthErrors(t *testing.T) {
 			defer srv.Close()
 
 			creds := credentials.Credentials{
-				BaseURL:  srv.URL,
-				AuthType: credentials.AuthTypeToken,
-				Token:    "bad-token",
+				BaseURL: srv.URL,
+				Token:   "bad-token",
 			}
 
 			client := NewN8NClient(creds)
@@ -148,9 +95,8 @@ func TestGetAllWorkflows_EmptyList(t *testing.T) {
 	defer srv.Close()
 
 	creds := credentials.Credentials{
-		BaseURL:  srv.URL,
-		AuthType: credentials.AuthTypeToken,
-		Token:    "any-token",
+		BaseURL: srv.URL,
+		Token:   "any-token",
 	}
 
 	client := NewN8NClient(creds)
